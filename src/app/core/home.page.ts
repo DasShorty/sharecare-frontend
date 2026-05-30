@@ -1,0 +1,37 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ReactiveFormsModule } from '@angular/forms';
+import { MapboxComponent } from '@shared/map/mapbox.component';
+
+@Component({
+  selector: 'home-page',
+  imports: [ReactiveFormsModule, MapboxComponent],
+  template: `
+    <section class="home-page">
+      <mapbox-component></mapbox-component>
+    </section>
+  `,
+  host: {
+    class: 'home-page-shell',
+  },
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [
+    `
+      :host {
+        display: block;
+        width: 100%;
+        height: 100dvh;
+      }
+
+      .home-page {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100dvh;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        box-sizing: border-box;
+      }
+    `,
+  ],
+})
+export class HomePage {}
