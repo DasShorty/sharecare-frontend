@@ -4,24 +4,32 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import type { LatLngExpression } from 'leaflet';
 import { MapMarker, NominatimSearchResult } from '@shared/map/map.model';
 import { ProblemStateService } from '@features/problem/problem-state.service';
+import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
 
 @Component({
   selector: 'mapbox-component',
-  imports: [MapComponent, ReactiveFormsModule],
+  imports: [MapComponent, ReactiveFormsModule, LucideSearch, LucideMapPinHouse],
   template: `
     <form class="location-controls" (submit)="onManualAddressSubmit($event)">
-      <label class="location-label" for="manual-address">Address</label>
-      <input
-        id="manual-address"
-        class="location-input"
-        type="text"
-        [formControl]="addressControl"
-        autocomplete="street-address"
-        placeholder="Enter your address"
-      />
+      <div style="display: flex; flex-direction: column; gap: 0.25rem">
+        <label class="location-label" for="manual-address">Adresse</label>
+        <input
+          id="manual-address"
+          class="location-input"
+          type="text"
+          [formControl]="addressControl"
+          autocomplete="street-address"
+          placeholder="Gebe deine Adresse ein"
+        />
+        @if (statusMessage(); as message) {
+          <p class="status-message" role="status" aria-live="polite">
+            {{ message }}
+          </p>
+        }
+      </div>
       <div class="location-actions">
         <button type="submit" class="action-button" [disabled]="isResolvingAddress()">
-          Use address
+          <svg lucideSearch></svg>
         </button>
         <button
           type="button"
@@ -29,14 +37,9 @@ import { ProblemStateService } from '@features/problem/problem-state.service';
           [disabled]="isLocating()"
           (click)="autoDetectLocation()"
         >
-          Auto-detect
+          <svg lucideMapPinHouse></svg>
         </button>
       </div>
-      @if (statusMessage(); as message) {
-        <p class="status-message" role="status" aria-live="polite">
-          {{ message }}
-        </p>
-      }
     </form>
 
     <map-component
@@ -52,20 +55,22 @@ import { ProblemStateService } from '@features/problem/problem-state.service';
       flex-direction: column;
       width: 100%;
       height: 100dvh;
-      gap: 0.75rem;
-      padding: 0.75rem;
       box-sizing: border-box;
     }
 
     .location-controls {
+      position: absolute;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       gap: 0.5rem;
       max-width: 38rem;
       background: #ffffff;
       border: 1px solid #d1d5db;
       border-radius: 0.5rem;
       padding: 0.75rem;
+      z-index: 999;
+      bottom: 3rem;
+      left: 2rem;
     }
 
     .location-label {
@@ -134,7 +139,7 @@ export class MapboxComponent {
   readonly statusMessage = signal<string | null>(null);
   readonly isLocating = signal(false);
   readonly isResolvingAddress = signal(false);
-  readonly markerLabel = signal('Selected location');
+  readonly markerLabel = signal('Gebe deinen aktuellen Standort ein!');
 
   readonly markers = computed<MapMarker[]>(() => {
     const userMarker: MapMarker = {
@@ -142,33 +147,36 @@ export class MapboxComponent {
       popupText: this.markerLabel(),
       type: 'user',
     };
-    const problemMarkers: MapMarker[] = this.problemStateService.getProblems()().map(problem => ({
-      position: [Number(problem.location.corLat), Number(problem.location.corLon)],
-      popupText: `${problem.name}: ${problem.description}`,
-      type: 'problem',
-    }));
+    const problemMarkers: MapMarker[] = this.problemStateService
+      .getProblems()()
+      .map((problem) => ({
+        position: [Number(problem.location.corLat), Number(problem.location.corLon)],
+        popupText: `${problem.name}: ${problem.description}`,
+        type: 'problem',
+      }));
 
     return [userMarker, ...problemMarkers];
   });
 
   async autoDetectLocation(): Promise<void> {
     if (!('geolocation' in navigator)) {
-      this.statusMessage.set('Geolocation is not supported by this browser.');
+      this.statusMessage.set(
+        'Die automatische Erkennung deines Standorts, ist von deinem Browser nicht ünterstüzt',
+      );
       return;
     }
 
     this.isLocating.set(true);
-    this.statusMessage.set('Detecting your current location...');
+    this.statusMessage.set('Erkenne deinen Standort...');
 
     try {
       const coords = await this.resolveCurrentLocation();
       this.center.set([coords.latitude, coords.longitude]);
       this.zoom.set(this.locationZoom);
-      this.markerLabel.set('Your current location');
-      this.statusMessage.set('Current location detected.');
+      this.markerLabel.set('Dein aktueller Standort');
+      this.statusMessage.set('Deinen aktuellen Standort gefunden!');
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Unable to detect your current location.';
+      const message = error instanceof Error ? error.message : 'Dein Standort ist unbekannt!';
       this.statusMessage.set(message);
     } finally {
       this.isLocating.set(false);
@@ -179,12 +187,12 @@ export class MapboxComponent {
     event.preventDefault();
     const address = this.addressControl.value.trim();
     if (!address) {
-      this.statusMessage.set('Please enter an address first.');
+      this.statusMessage.set('Bitte gebe deine Adresse vorher ein!');
       return;
     }
 
     this.isResolvingAddress.set(true);
-    this.statusMessage.set('Finding your address on the map...');
+    this.statusMessage.set('Suche deine Adresse auf der Karte...');
 
     try {
       const match = await this.resolveAddress(address);
@@ -193,7 +201,7 @@ export class MapboxComponent {
       this.markerLabel.set(match.display_name);
       this.statusMessage.set(`Showing: ${match.display_name}`);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unable to find this address.';
+      const message = error instanceof Error ? error.message : 'Unmöglich die Adresse zu laden!';
       this.statusMessage.set(message);
     } finally {
       this.isResolvingAddress.set(false);
@@ -205,7 +213,9 @@ export class MapboxComponent {
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => resolve(coords),
         (error: GeolocationPositionError) => {
-          reject(new Error(`Failed to read user location (${error.code}): ${error.message}`));
+          reject(
+            new Error(`Unmöglich deinen Standort zu lesen! (${error.code}): ${error.message}`),
+          );
         },
         {
           enableHighAccuracy: true,
@@ -227,12 +237,12 @@ export class MapboxComponent {
     );
 
     if (!response.ok) {
-      throw new Error('Address lookup failed. Please try again.');
+      throw new Error('Adressenaufruf fehlgeschlagen! Bitte versuche es erneut.');
     }
 
     const results: unknown = await response.json();
     if (!Array.isArray(results) || results.length === 0) {
-      throw new Error('No location found for this address.');
+      throw new Error('Keinen Standort gefunden!');
     }
 
     const firstResult = results[0];
@@ -243,14 +253,14 @@ export class MapboxComponent {
       !('lon' in firstResult) ||
       !('display_name' in firstResult)
     ) {
-      throw new Error('Address lookup returned an invalid response.');
+      throw new Error('Adressenabruf hat ungültige Daten zurückgegeben.');
     }
 
     const candidate = firstResult as NominatimSearchResult;
     const latitude = Number(candidate.lat);
     const longitude = Number(candidate.lon);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      throw new Error('Address lookup returned invalid coordinates.');
+      throw new Error('Adressenabruf hat ungültige Koordinaten zurückgegeben!');
     }
 
     return candidate;

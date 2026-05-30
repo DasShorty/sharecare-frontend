@@ -3,7 +3,7 @@ import { User } from '@features/user/user.model';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
-  private readonly USER_STORAGE_KEY = 'sharecare-user';
+  private readonly USER_STORAGE_KEY = 'share-care-user';
   private readonly userSignal = signal<User | null>(this.loadUserFromStorage());
 
   constructor() {

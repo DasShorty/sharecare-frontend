@@ -18,19 +18,11 @@ import { AddProblemButtonComponent } from '@features/problem/add-problem-button.
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
-      :host {
-        display: block;
-        width: 100%;
-        height: 100dvh;
-      }
-
       .home-page {
         display: flex;
         flex-direction: column;
         width: 100%;
         height: 100dvh;
-        gap: 0.75rem;
-        padding: 0.75rem;
         box-sizing: border-box;
       }
     `,

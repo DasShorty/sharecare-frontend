@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DialogModule } from 'primeng/dialog';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
@@ -16,6 +16,8 @@ import {
 } from '@features/payment/payment.model';
 import { Location } from '@features/location/location.model';
 import { Select } from 'primeng/select';
+import { Textarea } from 'primeng/textarea';
+import { RadioButton } from 'primeng/radiobutton';
 
 @Component({
   selector: 'problem-modal',
@@ -28,51 +30,54 @@ import { Select } from 'primeng/select';
     InputTextModule,
     InputNumberModule,
     Select,
+    Textarea,
+    RadioButton,
   ],
   template: `
     <p-dialog
       [(visible)]="isOpen"
-      [header]="'Report a Problem'"
+      [header]="'Neues Angebot hinzufügen'"
       [modal]="true"
+      [draggable]="false"
       [style]="{ width: '90vw', maxWidth: '500px' }"
       (onHide)="onDialogHide()"
     >
       <form [formGroup]="problemForm" (ngSubmit)="onSubmit()">
         <!-- Name -->
         <div class="form-group">
-          <label for="name" class="form-label">Problem Title *</label>
+          <label for="name" class="form-label">Angebot *</label>
           <input
             id="name"
             pInputText
             type="text"
             formControlName="name"
             class="form-input"
-            placeholder="Brief title of the problem"
+            placeholder="Kurze Beschreibung des Angebots"
           />
           @if (problemForm.get('name')?.invalid && problemForm.get('name')?.touched) {
-            <small class="error-text">Title is required</small>
+            <small class="error-text">Titel für das Angebot wird benötigt!</small>
           }
         </div>
 
         <!-- Description -->
         <div class="form-group">
-          <label for="description" class="form-label">Description *</label>
+          <label for="description" class="form-label">Beschreibung *</label>
           <textarea
             id="description"
             pInputTextarea
             formControlName="description"
             class="form-input"
             rows="3"
-            placeholder="Detailed description of the problem"
+            placeholder="Beschreibe das Angebot, welches du hast."
           ></textarea>
           @if (problemForm.get('description')?.invalid && problemForm.get('description')?.touched) {
-            <small class="error-text">Description is required</small>
+            <small class="error-text">Eine Angebotsbeschreibung wird benötigt!</small>
           }
         </div>
 
         <!-- Problem Type -->
         <div class="form-group">
-          <label for="type" class="form-label">Problem Type *</label>
+          <label for="type" class="form-label">Angebotstyp *</label>
           <p-select
             id="type"
             [options]="problemTypes"
@@ -80,18 +85,18 @@ import { Select } from 'primeng/select';
             optionLabel="label"
             optionValue="value"
             class="form-input"
-            placeholder="Select type"
+            placeholder="Typ auswählen"
           ></p-select>
         </div>
 
         <!-- Location -->
         <div class="form-group">
-          <label class="form-label">Location *</label>
+          <label class="form-label">Ort *</label>
           <div class="location-controls">
             <button
               type="button"
               pButton
-              label="Use Current Location"
+              label="Nutze aktuellen Standort"
               (click)="useCurrentLocation()"
               [disabled]="isDetectingLocation()"
               class="location-button"
@@ -99,40 +104,38 @@ import { Select } from 'primeng/select';
             <input
               pInputText
               type="text"
-              placeholder="Or enter address"
+              placeholder="Oder geben Sie die Adresse ein"
               formControlName="manualAddress"
               (change)="onAddressChange()"
               class="form-input"
             />
           </div>
           @if (selectedLocation(); as location) {
-            <small class="success-text">Location: {{ location.name }}</small>
+            <small class="success-text">Ort: {{ location.name }}</small>
           }
         </div>
 
         <!-- Time Type -->
         <div class="form-group">
-          <label class="form-label">Time Type *</label>
+          <label class="form-label">Zeit *</label>
           <div class="radio-group">
             <div class="radio-item">
-              <input
-                type="radio"
+              <p-radioButton
                 id="fixed-time"
                 [value]="TimeType.Fixed"
                 formControlName="timeType"
-                (change)="onTimeTypeChange()"
-              />
-              <label for="fixed-time">Fixed Time</label>
+                (change)="onTimeTypeChange()">
+              </p-radioButton>
+              <label for="fixed-time">Feste Zeit</label>
             </div>
             <div class="radio-item">
-              <input
-                type="radio"
+              <p-radioButton
                 id="range-time"
                 [value]="TimeType.Range"
                 formControlName="timeType"
                 (change)="onTimeTypeChange()"
-              />
-              <label for="range-time">Time Range</label>
+              ></p-radioButton>
+              <label for="range-time">Zeitspanne</label>
             </div>
           </div>
         </div>
@@ -140,7 +143,7 @@ import { Select } from 'primeng/select';
         <!-- Fixed Time -->
         @if (problemForm.get('timeType')?.value === TimeType.Fixed) {
           <div class="form-group">
-            <label for="fixed-date" class="form-label">Date & Time *</label>
+            <label for="fixed-date" class="form-label">Datum & Uhrzeit *</label>
             <input
               id="fixed-date"
               type="datetime-local"
@@ -153,7 +156,7 @@ import { Select } from 'primeng/select';
         <!-- Range Time -->
         @if (problemForm.get('timeType')?.value === TimeType.Range) {
           <div class="form-group">
-            <label for="start-date" class="form-label">Start Date & Time *</label>
+            <label for="start-date" class="form-label">Startdatum & Uhrzeit *</label>
             <input
               id="start-date"
               type="datetime-local"
@@ -162,7 +165,7 @@ import { Select } from 'primeng/select';
             />
           </div>
           <div class="form-group">
-            <label for="end-date" class="form-label">End Date & Time *</label>
+            <label for="end-date" class="form-label">Enddatum & Uhrzeit *</label>
             <input
               id="end-date"
               type="datetime-local"
@@ -174,37 +177,36 @@ import { Select } from 'primeng/select';
 
         <!-- Payment Type -->
         <div class="form-group">
-          <label class="form-label">Payment Type *</label>
+          <label class="form-label">Zahlungsart *</label>
           <div class="radio-group">
             <div class="radio-item">
-              <input
-                type="radio"
+              <p-radioButton
                 id="free-payment"
                 [value]="PaymentType.Free"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
-              />
-              <label for="free-payment">Free</label>
+              ></p-radioButton>
+              <label for="free-payment">Kostenlos</label>
             </div>
             <div class="radio-item">
-              <input
-                type="radio"
+              <p-radioButton
                 id="money-payment"
                 [value]="PaymentType.Money"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
-              />
-              <label for="money-payment">Money</label>
+              >
+              </p-radioButton>
+              <label for="money-payment">Entgeldlich</label>
             </div>
             <div class="radio-item">
-              <input
-                type="radio"
+              <p-radioButton
                 id="custom-payment"
                 [value]="PaymentType.Custom"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
-              />
-              <label for="custom-payment">Custom</label>
+              >
+              </p-radioButton>
+              <label for="custom-payment">Anderes Gut</label>
             </div>
           </div>
         </div>
@@ -212,30 +214,30 @@ import { Select } from 'primeng/select';
         <!-- Money Amount -->
         @if (problemForm.get('paymentType')?.value === PaymentType.Money) {
           <div class="form-group">
-            <label for="amount" class="form-label">Amount (€) *</label>
-            <input
+            <label for="amount" class="form-label">Menge (€) *</label>
+            <p-inputNumber
               id="amount"
-              pInputNumber
               formControlName="moneyAmount"
               [min]="0"
               [max]="100000"
               [step]="0.01"
               class="form-input"
-            />
+            >
+            </p-inputNumber>
           </div>
         }
 
         <!-- Custom Payment Text -->
         @if (problemForm.get('paymentType')?.value === PaymentType.Custom) {
           <div class="form-group">
-            <label for="custom-payment-text" class="form-label">Payment Details *</label>
+            <label for="custom-payment-text" class="form-label">Zahlung als *</label>
             <textarea
               id="custom-payment-text"
               pInputTextarea
               formControlName="customPaymentText"
               class="form-input"
               rows="2"
-              placeholder="Describe the payment terms"
+              placeholder="Was für eine Bezahlungsart?"
             ></textarea>
           </div>
         }
@@ -245,14 +247,14 @@ import { Select } from 'primeng/select';
           <button
             type="button"
             pButton
-            label="Cancel"
+            label="Abbrechen"
             (click)="onCancel()"
             class="cancel-button"
           ></button>
           <button
             type="submit"
             pButton
-            label="Create Problem"
+            label="Angebot erstellen"
             [disabled]="!problemForm.valid || !selectedLocation() || isCreatingProblem()"
             class="submit-button"
           ></button>
@@ -352,22 +354,12 @@ import { Select } from 'primeng/select';
         background: #2563eb;
         color: #ffffff;
       }
-
-      ::ng-deep .p-dialog-content {
-        padding: 2rem 1.5rem;
-      }
-
-      ::ng-deep .p-dropdown {
-        width: 100%;
-      }
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProblemModalComponent {
   private readonly problemStateService = inject(ProblemStateService);
-  private readonly fb = inject(FormBuilder);
-
   isOpen = signal(false);
   readonly isCreatingProblem = signal(false);
   readonly isDetectingLocation = signal(false);
@@ -376,25 +368,25 @@ export class ProblemModalComponent {
   readonly TimeType = TimeType;
   readonly PaymentType = PaymentType;
   readonly problemTypes = [
-    { label: 'Resource', value: ProblemType.Resource },
-    { label: 'Service', value: ProblemType.Service },
+    { label: 'Ware / Produkt', value: ProblemType.Resource },
+    { label: 'Dienstleistung', value: ProblemType.Service },
   ];
 
   problemForm!: FormGroup;
 
   constructor() {
-    this.problemForm = this.fb.group({
-      name: ['', Validators.required],
-      description: ['', Validators.required],
-      type: [ProblemType.Resource],
-      timeType: [TimeType.Fixed],
-      fixedTime: [null as Date | null],
-      startTime: [null as Date | null],
-      endTime: [null as Date | null],
-      paymentType: [PaymentType.Free],
-      moneyAmount: [0],
-      customPaymentText: [''],
-      manualAddress: [''],
+    this.problemForm = new FormGroup({
+      name: new FormControl<string | null>(null, Validators.required),
+      description: new FormControl<string | null>(null, Validators.required),
+      type: new FormControl<ProblemType | null>(null, Validators.required),
+      timeType: new FormControl<TimeType | null>(null, Validators.required),
+      fixedTime: new FormControl<Date | null>(null, Validators.required),
+      startTime: new FormControl<Date | null>(null, Validators.required),
+      endTime: new FormControl<Date | null>(null, Validators.required),
+      paymentType: new FormControl<PaymentType | null>(null, Validators.required),
+      moneyAmount: new FormControl<number | null>(0, Validators.required),
+      customPaymentText: new FormControl<string | null>(null, Validators.required),
+      manualAddress: new FormControl<string | null>(null, Validators.required),
     });
   }
 
@@ -422,7 +414,7 @@ export class ProblemModalComponent {
       const coords = await this.getCurrentLocation();
       const location: Location = {
         id: Date.now(),
-        name: 'Current Location',
+        name: 'Aktueller Ort',
         address: `${coords.latitude}, ${coords.longitude}`,
         corLat: coords.latitude.toString(),
         corLon: coords.longitude.toString(),

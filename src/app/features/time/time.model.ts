@@ -4,8 +4,8 @@ export interface Time {
 }
 
 export enum TimeType {
-  Fixed,
-  Range,
+  Fixed = 0,
+  Range = 1,
 }
 
 export interface FixedTime extends Time {
