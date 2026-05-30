@@ -1,8 +1,9 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MapComponent } from '@shared/map/map.component';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import type { LatLngExpression } from 'leaflet';
 import { MapMarker, NominatimSearchResult } from '@shared/map/map.model';
+import { ProblemStateService } from '@features/problem/problem-state.service';
 
 @Component({
   selector: 'mapbox-component',
@@ -125,6 +126,8 @@ import { MapMarker, NominatimSearchResult } from '@shared/map/map.model';
 export class MapboxComponent {
   private readonly fallbackCenter: LatLngExpression = [51.0504, 13.7373];
   private readonly locationZoom = 15;
+  private readonly problemStateService = inject(ProblemStateService);
+
   readonly center = signal<LatLngExpression>(this.fallbackCenter);
   readonly zoom = signal(this.locationZoom);
   readonly addressControl = new FormControl('', { nonNullable: true });
@@ -132,9 +135,21 @@ export class MapboxComponent {
   readonly isLocating = signal(false);
   readonly isResolvingAddress = signal(false);
   readonly markerLabel = signal('Selected location');
-  readonly markers = computed<MapMarker[]>(() => [
-    { position: this.center(), popupText: this.markerLabel() },
-  ]);
+
+  readonly markers = computed<MapMarker[]>(() => {
+    const userMarker: MapMarker = {
+      position: this.center(),
+      popupText: this.markerLabel(),
+      type: 'user',
+    };
+    const problemMarkers: MapMarker[] = this.problemStateService.getProblems()().map(problem => ({
+      position: [Number(problem.location.corLat), Number(problem.location.corLon)],
+      popupText: `${problem.name}: ${problem.description}`,
+      type: 'problem',
+    }));
+
+    return [userMarker, ...problemMarkers];
+  });
 
   async autoDetectLocation(): Promise<void> {
     if (!('geolocation' in navigator)) {

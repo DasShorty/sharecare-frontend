@@ -1,6 +1,7 @@
 import { TimeOptions } from '@features/time/time.model';
 import { PaymentOptions } from '@features/payment/payment.model';
 import { User } from '@features/user/user.model';
+import { Location } from '@features/location/location.model';
 
 export interface Problem {
   id: number;
@@ -17,5 +18,5 @@ export interface Problem {
 
 export enum ProblemType {
   Resource = 0,
-  Server = 1,
+  Service = 1,
 }

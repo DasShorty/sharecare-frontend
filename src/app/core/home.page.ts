@@ -1,13 +1,15 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MapboxComponent } from '@shared/map/mapbox.component';
+import { AddProblemButtonComponent } from '@features/problem/add-problem-button.component';
 
 @Component({
   selector: 'home-page',
-  imports: [ReactiveFormsModule, MapboxComponent],
+  imports: [ReactiveFormsModule, MapboxComponent, AddProblemButtonComponent],
   template: `
     <section class="home-page">
       <mapbox-component></mapbox-component>
+      <add-problem-button></add-problem-button>
     </section>
   `,
   host: {

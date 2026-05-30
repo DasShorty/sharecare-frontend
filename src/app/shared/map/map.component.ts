@@ -135,16 +135,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const customIcon = leaflet.divIcon({
-      className: 'custom-marker',
+    const userIcon = leaflet.divIcon({
+      className: 'custom-marker user-marker',
       html: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-icon lucide-user"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
       iconSize: [25, 25],
       iconAnchor: [9, 9],
     });
 
+    const problemIcon = leaflet.divIcon({
+      className: 'custom-marker problem-marker',
+      html: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-circle"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+
     const layer = leaflet.layerGroup();
     for (const marker of this.markers()) {
-      const leafletMarker = leaflet.marker(marker.position, { icon: customIcon });
+      const icon = marker.type === 'problem' ? problemIcon : userIcon;
+      const leafletMarker = leaflet.marker(marker.position, { icon });
       if (marker.popupText) {
         leafletMarker.bindPopup(marker.popupText);
       }
