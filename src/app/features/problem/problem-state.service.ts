@@ -16,12 +16,25 @@ export class ProblemStateService {
       ...problem,
       id: this.nextProblemId++,
     };
+    this.appendProblem(newProblem);
+    return newProblem;
+  }
+
+  setProblems(problems: Problem[]): void {
+    const next = [...problems];
+    this.problemsSignal.set(next);
+    this.nextProblemId = this.computeNextId(next);
+    this.saveProblemsToStorage(next);
+  }
+
+  appendProblem(problem: Problem): Problem {
     this.problemsSignal.update((problems) => {
-      const next = [...problems, newProblem];
+      const next = [...problems, problem];
       this.saveProblemsToStorage(next);
       return next;
     });
-    return newProblem;
+    this.nextProblemId = Math.max(this.nextProblemId, this.computeNextId([problem]));
+    return problem;
   }
 
   removeProblem(problemId: number): void {

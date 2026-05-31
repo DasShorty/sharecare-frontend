@@ -3,10 +3,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   effect,
+  ElementRef,
   input,
   OnDestroy,
   signal,
-  viewChild,
+  ViewChild,
 } from '@angular/core';
 import type { LatLngExpression, LayerGroup, Map as LeafletMap } from 'leaflet';
 import { MapMarker } from '@shared/map/map.model';
@@ -67,7 +68,7 @@ import { ProblemType } from '@features/problem/problem.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
-  readonly center = input<LatLngExpression>([51.0504, 13.7373]);
+  readonly center = input<LatLngExpression>([51.1401356, 14.8824797]);
   readonly zoom = input(13);
   readonly markers = input<MapMarker[]>([]);
   readonly tileUrl = input('https://tile.openstreetmap.org/{z}/{x}/{y}.png');
@@ -76,7 +77,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   readonly minZoom = input(3);
   readonly loading = signal(true);
 
-  private readonly mapHost = viewChild.required<HTMLDivElement>('mapHost');
+  @ViewChild('mapHost', { static: true })
+  private readonly mapHost!: ElementRef<HTMLDivElement>;
   private readonly map = signal<LeafletMap | null>(null);
   private leafletApi: typeof import('leaflet') | null = null;
   private markerLayer: LayerGroup | null = null;
@@ -104,7 +106,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   async ngAfterViewInit(): Promise<void> {
     this.leafletApi = await import('leaflet');
-    const host = this.mapHost();
+    const host = this.mapHost.nativeElement;
     const map = this.leafletApi.map(host, {
       center: this.center(),
       zoom: this.zoom(),
@@ -125,13 +127,37 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       // ignore if not supported
     }
 
-    this.leafletApi
-      .tileLayer(this.tileUrl(), {
-        attribution: this.attribution(),
-        maxZoom: this.maxZoom(),
-        minZoom: this.minZoom(),
-      })
-      .addTo(map);
+    const tileUrl = this.tileUrl();
+    const tileOptions = {
+      attribution: this.attribution(),
+      maxZoom: this.maxZoom(),
+      minZoom: this.minZoom(),
+    } as const;
+
+    // Create the tile layer and attach handlers to deal with loading errors
+    let tileLayer = this.leafletApi.tileLayer(tileUrl, tileOptions).addTo(map);
+    let triedFallback = false;
+
+    tileLayer.on('load', () => this.loading.set(false));
+    tileLayer.on('tileerror', (err: unknown) => {
+      console.warn('Tile error', err);
+      // Try a fallback tileset once
+      if (!triedFallback) {
+        triedFallback = true;
+        try {
+          const fallback = 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png';
+          map.removeLayer(tileLayer);
+          tileLayer = this.leafletApi!.tileLayer(fallback, tileOptions).addTo(map);
+          tileLayer.on('load', () => this.loading.set(false));
+        } catch (e) {
+          console.warn('Fallback tiles failed', e);
+          this.loading.set(false);
+        }
+      } else {
+        // If fallback already tried, just clear loading so overlay won't block
+        this.loading.set(false);
+      }
+    });
 
     this.map.set(map);
     this.renderMarkers(map);
@@ -181,12 +207,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     const layer = leaflet.layerGroup();
     for (const marker of this.markers()) {
-      if (!marker.popupData) {
-        continue;
-      }
-
       let icon = undefined;
-      const problemType = marker.popupData['type'] as ProblemType | undefined;
+      const problemType = marker.popupData
+        ? (marker.popupData['type'] as ProblemType | undefined)
+        : undefined;
 
       if (marker.type === 'problem') {
         if (problemType === ProblemType.Resource) {
@@ -247,6 +271,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     const formatValue = (key: string, value: unknown): string => {
       if (value === null || value === undefined) return '';
+      // Problem type (enum) formatting: show German names
+      if (key === 'type' && (typeof value === 'number' || typeof value === 'string')) {
+        const n = Number(value);
+        if (n === ProblemType.Resource) return 'Ware / Produkt';
+        if (n === ProblemType.Service) return 'Dienstleistung';
+        return String(value);
+      }
+
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         return String(value);
       }

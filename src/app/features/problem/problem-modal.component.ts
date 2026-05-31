@@ -5,20 +5,16 @@ import { DialogModule } from 'primeng/dialog';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
-import { ProblemStateService } from '@features/problem/problem-state.service';
-import { Problem, ProblemType } from '@features/problem/problem.model';
-import { FixedTime, RangeTime, TimeType } from '@features/time/time.model';
-import {
-  CustomPayment,
-  FreePayment,
-  MoneyPayment,
-  PaymentType,
-} from '@features/payment/payment.model';
+import { ProblemType } from '@features/problem/problem.model';
+import { TimeType } from '@features/time/time.model';
+import { PaymentType } from '@features/payment/payment.model';
 import { Location } from '@features/location/location.model';
 import { LocationService } from '@features/location/location.service';
 import { Select } from 'primeng/select';
 import { Textarea } from 'primeng/textarea';
 import { RadioButton } from 'primeng/radiobutton';
+import { firstValueFrom } from 'rxjs';
+import { ProblemService } from '@features/problem/problem.service';
 
 @Component({
   selector: 'problem-modal',
@@ -368,7 +364,7 @@ import { RadioButton } from 'primeng/radiobutton';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProblemModalComponent {
-  private readonly problemStateService = inject(ProblemStateService);
+  private readonly problemService = inject(ProblemService);
   private readonly locationService = inject(LocationService);
   isOpen = signal(false);
   readonly isCreatingProblem = signal(false);
@@ -478,111 +474,14 @@ export class ProblemModalComponent {
 
     try {
       const formValue = this.problemForm.getRawValue();
-      let location = this.selectedLocation();
-
-      if (!location) {
-        const manualAddress = formValue.manualAddress?.trim();
-        if (!manualAddress) {
-          return;
-        }
-
-        try {
-          const match = await this.locationService.geocodeAddress(manualAddress);
-          location = {
-            id: Date.now(),
-            name: match.display_name,
-            address: match.display_name,
-            corLat: match.lat,
-            corLon: match.lon,
-          };
-          this.selectedLocation.set(location);
-        } catch (error) {
-          console.error('Failed to resolve manual address:', error);
-          return;
-        }
-      }
-
-      // Create time object
-      let timeObj;
-      if (formValue.timeType === TimeType.Fixed) {
-        const fixedTime = formValue.fixedTime ? new Date(formValue.fixedTime) : new Date();
-        timeObj = {
-          id: Date.now(),
-          type: TimeType.Fixed,
-          time: fixedTime,
-        } as FixedTime;
-      } else {
-        const startTime = formValue.startTime ? new Date(formValue.startTime) : new Date();
-        const endTime = formValue.endTime ? new Date(formValue.endTime) : new Date();
-        timeObj = {
-          id: Date.now(),
-          type: TimeType.Range,
-          startTime,
-          endTime,
-        } as RangeTime;
-      }
-
-      // Create payment object
-      let paymentObj;
-      if (formValue.paymentType === PaymentType.Free) {
-        paymentObj = {
-          id: Date.now(),
-          type: PaymentType.Free,
-        } as FreePayment;
-      } else if (formValue.paymentType === PaymentType.Money) {
-        paymentObj = {
-          id: Date.now(),
-          type: PaymentType.Money,
-          amount: formValue.moneyAmount || 0,
-        } as MoneyPayment;
-      } else {
-        paymentObj = {
-          id: Date.now(),
-          type: PaymentType.Custom,
-          customText: formValue.customPaymentText || '',
-        } as CustomPayment;
-      }
-
-      // Human-friendly labels (German locale)
-      const nf = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-      let paymentLabel: string | undefined;
-      if (paymentObj.type === PaymentType.Free) {
-        paymentLabel = 'Kostenlos';
-      } else if (paymentObj.type === PaymentType.Money) {
-        paymentLabel = nf.format((paymentObj as MoneyPayment).amount ?? 0);
-      } else if (paymentObj.type === PaymentType.Custom) {
-        paymentLabel = (paymentObj as CustomPayment).customText || '<custom>';
-      }
-
-      const problemData: Problem = {
-        id: -1,
-        name: formValue.name,
-        description: formValue.description,
-        type: formValue.type,
-        isLocationBound: true,
-        location,
-        time: timeObj,
-        payment: paymentObj,
-        providers: [],
-        searchers: [],
-        timeLabel: ((): string | undefined => {
-          if ((timeObj as FixedTime).type === TimeType.Fixed) {
-            const t = (timeObj as FixedTime).time;
-            return t.toLocaleString('de-DE');
-          }
-          if ((timeObj as RangeTime).type === TimeType.Range) {
-            const s = (timeObj as RangeTime).startTime;
-            const e = (timeObj as RangeTime).endTime;
-            return `${s.toLocaleString('de-DE')} — ${e.toLocaleString('de-DE')}`;
-          }
-          return undefined;
-        })(),
-        paymentLabel,
-      };
-
-      this.problemStateService.addProblem(problemData);
+      // Delegate problem construction, optional geocoding and submission to the ProblemService.
+      await firstValueFrom(
+        this.problemService.createAndSubmitProblem(formValue, this.selectedLocation()),
+      );
       this.isOpen.set(false);
       this.resetForm();
+    } catch (error) {
+      console.error('Failed to create problem:', error);
     } finally {
       this.isCreatingProblem.set(false);
     }

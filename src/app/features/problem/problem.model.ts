@@ -14,7 +14,6 @@ export interface Problem {
   payment: PaymentOptions;
   providers: User[];
   searchers: User[];
-  // Optional human-friendly labels (formatted for display, e.g. German locale)
   timeLabel?: string;
   paymentLabel?: string;
 }

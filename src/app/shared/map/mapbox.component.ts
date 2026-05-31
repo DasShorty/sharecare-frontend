@@ -3,9 +3,9 @@ import { MapComponent } from '@shared/map/map.component';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import type { LatLngExpression } from 'leaflet';
 import { MapMarker } from '@shared/map/map.model';
-import { ProblemStateService } from '@features/problem/problem-state.service';
 import { LocationService } from '@features/location/location.service';
 import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
+import { ProblemService } from '@features/problem/problem.service';
 
 @Component({
   selector: 'mapbox-component',
@@ -162,7 +162,7 @@ import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
 export class MapboxComponent {
   private readonly fallbackCenter: LatLngExpression = [51.0504, 13.7373];
   private readonly locationZoom = 15;
-  private readonly problemStateService = inject(ProblemStateService);
+  private readonly problemService = inject(ProblemService);
   private readonly locationService = inject(LocationService);
 
   readonly center = signal<LatLngExpression>(this.fallbackCenter);
@@ -179,7 +179,7 @@ export class MapboxComponent {
       popupText: this.markerLabel(),
       type: 'user',
     };
-    const problemMarkers: MapMarker[] = this.problemStateService
+    const problemMarkers: MapMarker[] = this.problemService
       .getProblems()()
       .map((problem) => ({
         position: [Number(problem.location.corLat), Number(problem.location.corLon)],
