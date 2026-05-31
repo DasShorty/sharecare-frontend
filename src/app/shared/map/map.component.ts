@@ -3,14 +3,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   effect,
-  ElementRef,
   input,
   OnDestroy,
   signal,
-  ViewChild,
+  viewChild,
 } from '@angular/core';
 import type { LatLngExpression, LayerGroup, Map as LeafletMap } from 'leaflet';
 import { MapMarker } from '@shared/map/map.model';
+import { PaymentType } from '@features/payment/payment.model';
+import { ProblemType } from '@features/problem/problem.model';
 
 @Component({
   selector: 'map-component',
@@ -48,6 +49,7 @@ import { MapMarker } from '@shared/map/map.model';
         width: 100%;
         height: 100%;
         min-height: 0;
+        touch-action: auto;
       }
 
       .map-loading {
@@ -74,46 +76,54 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   readonly minZoom = input(3);
   readonly loading = signal(true);
 
-  @ViewChild('mapHost', { static: true })
-  private readonly mapHost!: ElementRef<HTMLDivElement>;
+  private readonly mapHost = viewChild.required<HTMLDivElement>('mapHost');
   private readonly map = signal<LeafletMap | null>(null);
   private leafletApi: typeof import('leaflet') | null = null;
   private markerLayer: LayerGroup | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
+    // Effect only for updating the map view when centre/zoom change explicitly.
     effect(() => {
       const map = this.map();
-      if (!map) {
-        return;
-      }
+      if (!map) return;
+      // Only react to explicit center/zoom changes — this allows users to pan/zoom manually
+      map.setView(this.center(), this.zoom());
+    });
 
-      const markers = this.markers();
-      if (markers.length > 1 && this.leafletApi) {
-        const bounds = this.leafletApi.latLngBounds(markers.map((marker) => marker.position));
-        if (bounds.isValid()) {
-          map.fitBounds(bounds.pad(0.2), {
-            maxZoom: this.zoom(),
-          });
-        } else {
-          map.setView(this.center(), this.zoom());
-        }
-      } else {
-        map.setView(this.center(), this.zoom());
-      }
-
-      this.renderMarkers(map);
+    // Separate effect for rendering markers so marker updates don't force the view
+    effect(() => {
+      const map = this.map();
+      if (!map) return;
+      // read markers to subscribe to changes, but schedule renderMarkers to avoid
+      // interfering with pointer events during user interactions.
+      this.markers();
+      requestAnimationFrame(() => this.renderMarkers(map));
     });
   }
 
   async ngAfterViewInit(): Promise<void> {
     this.leafletApi = await import('leaflet');
-    const host = this.mapHost.nativeElement;
+    const host = this.mapHost();
     const map = this.leafletApi.map(host, {
       center: this.center(),
       zoom: this.zoom(),
       zoomControl: true,
+      scrollWheelZoom: true,
+      touchZoom: true,
+      dragging: true,
+      doubleClickZoom: true,
     });
+
+    // Explicitly enable interaction handlers to be robust across platforms
+    try {
+      map.dragging?.enable();
+      map.touchZoom?.enable();
+      map.scrollWheelZoom?.enable();
+      map.doubleClickZoom?.enable();
+    } catch {
+      // ignore if not supported
+    }
 
     this.leafletApi
       .tileLayer(this.tileUrl(), {
@@ -155,7 +165,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       iconAnchor: [22, 22],
     });
 
-    const problemIcon = leaflet.divIcon({
+    const productIcon = leaflet.divIcon({
+      className: 'custom-marker problem-marker',
+      html: '<span class="marker-icon"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-circle"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>',
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    });
+
+    const serviceIcon = leaflet.divIcon({
       className: 'custom-marker problem-marker',
       html: '<span class="marker-icon"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-circle"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>',
       iconSize: [44, 44],
@@ -164,10 +181,30 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     const layer = leaflet.layerGroup();
     for (const marker of this.markers()) {
-      const icon = marker.type === 'problem' ? problemIcon : userIcon;
+      if (!marker.popupData) {
+        continue;
+      }
+
+      let icon = undefined;
+      const problemType = marker.popupData['type'] as ProblemType | undefined;
+
+      if (marker.type === 'problem') {
+        if (problemType === ProblemType.Resource) {
+          icon = productIcon;
+        } else {
+          icon = serviceIcon;
+        }
+      } else {
+        icon = userIcon;
+      }
+
       const leafletMarker = leaflet.marker(marker.position, { icon });
-      if (marker.popupText) {
-        leafletMarker.bindPopup(marker.popupText);
+
+      if (marker.popupData && typeof marker.popupData === 'object') {
+        const html = this.buildPopupHtml(marker.popupData);
+        leafletMarker.bindPopup(html, { maxWidth: 320 });
+      } else if (marker.popupText) {
+        leafletMarker.bindPopup(String(marker.popupText));
       }
 
       leafletMarker.addTo(layer);
@@ -175,5 +212,113 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     layer.addTo(map);
     this.markerLayer = layer;
+  }
+
+  private buildPopupHtml(data: Record<string, unknown>): string {
+    const escape = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Map internal property names to end-user labels (German). Update this object to change what users see.
+    const labelMap: Record<string, string> = {
+      name: 'Name',
+      description: 'Beschreibung',
+      type: 'Typ',
+      time: 'Zeit',
+      payment: 'Zahlungsart',
+      location: 'Ort',
+      address: 'Adresse',
+      corLat: 'Breitengrad',
+      corLon: 'Längengrad',
+      startTime: 'Start',
+      endTime: 'Ende',
+      moneyAmount: 'Betrag',
+      customText: 'Beschreibung',
+    };
+
+    const humanizeKey = (k: string) => {
+      if (labelMap[k]) return labelMap[k];
+      // fallback: split camelCase or underscores and capitalize
+      const parts = k
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/_/g, ' ')
+        .split(' ');
+      return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    };
+
+    const formatValue = (key: string, value: unknown): string => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+      }
+
+      if (typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+
+        // Time formatting: handle fixed or range
+        if ('time' in obj || ('startTime' in obj && 'endTime' in obj)) {
+          try {
+            if ('time' in obj) {
+              const t = new Date(obj['time'] as any);
+              return t.toLocaleString('de-DE');
+            }
+            const s = new Date(obj['startTime'] as any);
+            const e = new Date(obj['endTime'] as any);
+            return `${s.toLocaleString('de-DE')} — ${e.toLocaleString('de-DE')}`;
+          } catch {
+            return JSON.stringify(obj);
+          }
+        }
+
+        // Payment formatting: show human-friendly label
+        if (key === 'payment') {
+          const t = obj['type'] as unknown as number | undefined;
+          if (t === PaymentType.Free) return 'Kostenlos';
+          if (t === PaymentType.Money && 'amount' in obj) {
+            const amt = Number(obj['amount']);
+            if (!Number.isNaN(amt)) return `${amt.toFixed(2)} €`;
+          }
+          if (t === PaymentType.Custom && 'customText' in obj) return String(obj['customText']);
+          // fallback
+          if ('customText' in obj) return String(obj['customText']);
+          if ('amount' in obj) {
+            const amt = Number(obj['amount']);
+            if (!Number.isNaN(amt)) return `${amt.toFixed(2)} €`;
+          }
+          return '<custom>';
+        }
+
+        // Location formatting
+        if ('address' in obj && 'corLat' in obj && 'corLon' in obj) {
+          return String(obj['address']);
+        }
+
+        try {
+          return JSON.stringify(obj, undefined, 0);
+        } catch {
+          return String(obj);
+        }
+      }
+
+      return String(value);
+    };
+
+    const rows: string[] = [];
+    for (const key of Object.keys(data)) {
+      const raw = data[key];
+      const value = formatValue(key, raw);
+      const label = humanizeKey(key);
+      rows.push(`
+        <div style="display:flex;gap:0.5rem;padding:0.3rem 0;border-bottom:1px solid rgba(0,0,0,0.06);">
+          <div style="flex:0 0 7.5rem;color:#374151;font-weight:700;font-size:0.9rem;">${escape(label)}</div>
+          <div style="flex:1;color:#111827;font-size:0.95rem;">${escape(value)}</div>
+        </div>
+      `);
+    }
+
+    return `
+      <div style="font-family:system-ui,Arial,sans-serif;font-size:0.95rem;min-width:240px;">
+        ${rows.join('')}
+      </div>
+    `;
   }
 }

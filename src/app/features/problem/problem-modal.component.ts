@@ -543,6 +543,17 @@ export class ProblemModalComponent {
         } as CustomPayment;
       }
 
+      // Human-friendly labels (German locale)
+      const nf = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+      let paymentLabel: string | undefined;
+      if (paymentObj.type === PaymentType.Free) {
+        paymentLabel = 'Kostenlos';
+      } else if (paymentObj.type === PaymentType.Money) {
+        paymentLabel = nf.format((paymentObj as MoneyPayment).amount ?? 0);
+      } else if (paymentObj.type === PaymentType.Custom) {
+        paymentLabel = (paymentObj as CustomPayment).customText || '<custom>';
+      }
+
       const problemData: Problem = {
         id: -1,
         name: formValue.name,
@@ -554,6 +565,19 @@ export class ProblemModalComponent {
         payment: paymentObj,
         providers: [],
         searchers: [],
+        timeLabel: ((): string | undefined => {
+          if ((timeObj as FixedTime).type === TimeType.Fixed) {
+            const t = (timeObj as FixedTime).time;
+            return t.toLocaleString('de-DE');
+          }
+          if ((timeObj as RangeTime).type === TimeType.Range) {
+            const s = (timeObj as RangeTime).startTime;
+            const e = (timeObj as RangeTime).endTime;
+            return `${s.toLocaleString('de-DE')} — ${e.toLocaleString('de-DE')}`;
+          }
+          return undefined;
+        })(),
+        paymentLabel,
       };
 
       this.problemStateService.addProblem(problemData);

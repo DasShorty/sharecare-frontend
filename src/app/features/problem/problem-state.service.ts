@@ -1,12 +1,11 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { Problem } from '@features/problem/problem.model';
-import { UserService } from '@features/user/user.service';
 
 @Injectable({ providedIn: 'root' })
 export class ProblemStateService {
-  private readonly userService = inject(UserService);
-  private readonly problemsSignal = signal<Problem[]>([]);
-  private nextProblemId = 1;
+  private readonly STORAGE_KEY = 'share-care-problems';
+  private readonly problemsSignal = signal<Problem[]>(this.loadProblemsFromStorage());
+  private nextProblemId = this.computeNextId(this.problemsSignal());
 
   getProblems() {
     return this.problemsSignal.asReadonly();
@@ -17,16 +16,56 @@ export class ProblemStateService {
       ...problem,
       id: this.nextProblemId++,
     };
-    this.problemsSignal.update((problems) => [...problems, newProblem]);
+    this.problemsSignal.update((problems) => {
+      const next = [...problems, newProblem];
+      this.saveProblemsToStorage(next);
+      return next;
+    });
     return newProblem;
   }
 
   removeProblem(problemId: number): void {
-    this.problemsSignal.update((problems) => problems.filter((p) => p.id !== problemId));
+    this.problemsSignal.update((problems) => {
+      const next = problems.filter((p) => p.id !== problemId);
+      this.saveProblemsToStorage(next);
+      return next;
+    });
   }
 
   clearProblems(): void {
     this.problemsSignal.set([]);
     this.nextProblemId = 1;
+    try {
+      localStorage.removeItem(this.STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  private saveProblemsToStorage(problems: Problem[]): void {
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(problems));
+    } catch (err) {
+      console.error('Failed to persist problems to localStorage', err);
+    }
+  }
+
+  private loadProblemsFromStorage(): Problem[] {
+    try {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as Problem[] | null;
+      if (!Array.isArray(parsed)) return [];
+      return parsed;
+    } catch (err) {
+      console.error('Failed to read problems from localStorage', err);
+      return [];
+    }
+  }
+
+  private computeNextId(list: Problem[]): number {
+    if (!list || list.length === 0) return 1;
+    const max = list.reduce((m, p) => Math.max(m, p.id ?? 0), 0);
+    return max + 1;
   }
 }

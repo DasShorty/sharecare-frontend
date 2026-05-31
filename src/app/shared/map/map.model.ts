@@ -9,5 +9,6 @@ export interface NominatimSearchResult {
 export interface MapMarker {
   position: LatLngExpression;
   popupText?: string;
+  popupData?: Record<string, unknown>;
   type?: 'user' | 'problem';
 }

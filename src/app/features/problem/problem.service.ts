@@ -16,6 +16,14 @@ export class ProblemService {
     return this.problemStateService.addProblem(problem);
   }
 
+  /**
+   * Send a problem to a backend endpoint. The method returns the HTTP observable.
+   * Caller can subscribe and, on success, decide to add the problem to local state.
+   */
+  createProblemRemote(problem: Problem, endpoint = '/api/problems') {
+    return this.httpClient.post<Problem>(endpoint, problem);
+  }
+
   removeProblem(problemId: number) {
     this.problemStateService.removeProblem(problemId);
   }

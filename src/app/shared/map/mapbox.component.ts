@@ -49,6 +49,15 @@ import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
       [zoom]="zoom()"
       [markers]="markers()"
     ></map-component>
+    <button
+      class="center-button"
+      type="button"
+      aria-label="Zentriere Karte auf meinen Standort"
+      (click)="autoDetectLocation()"
+      [disabled]="isLocating()"
+    >
+      <svg lucideMapPinHouse></svg>
+    </button>
   `,
   styles: `
     :host {
@@ -70,7 +79,7 @@ import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
       border-radius: 0.5rem;
       padding: 0.75rem;
       z-index: 999;
-      bottom: 3rem;
+      top: 3rem;
       left: 2rem;
     }
 
@@ -127,6 +136,27 @@ import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
       min-width: 0;
       min-height: 0;
     }
+
+    .center-button {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      z-index: 1000;
+      width: 3rem;
+      height: 3rem;
+      border-radius: 0.5rem;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      cursor: pointer;
+    }
+
+    .center-button[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   `,
 })
 export class MapboxComponent {
@@ -154,6 +184,15 @@ export class MapboxComponent {
       .map((problem) => ({
         position: [Number(problem.location.corLat), Number(problem.location.corLon)],
         popupText: `${problem.name}: ${problem.description}`,
+        // provide structured data for richer popups
+        popupData: {
+          name: problem.name,
+          description: problem.description,
+          type: problem.type,
+          time: problem.time,
+          payment: problem.payment,
+          location: problem.location,
+        },
         type: 'problem',
       }));
 
@@ -191,7 +230,11 @@ export class MapboxComponent {
         const rev = await this.locationService.reverseGeocode(coords.latitude, coords.longitude);
         this.markerLabel.set(rev.display_name ?? 'Dein aktueller Standort');
         this.addressControl.setValue(rev.display_name ?? `${coords.latitude}, ${coords.longitude}`);
-        this.locationService.saveUserLocation(coords.latitude, coords.longitude, rev.display_name ?? null);
+        this.locationService.saveUserLocation(
+          coords.latitude,
+          coords.longitude,
+          rev.display_name ?? null,
+        );
       } catch {
         this.markerLabel.set('Dein aktueller Standort');
         const coordStr = `${coords.latitude}, ${coords.longitude}`;
@@ -226,7 +269,11 @@ export class MapboxComponent {
       this.markerLabel.set(match.display_name);
       // Ensure the manual search input reflects the canonical display name
       this.addressControl.setValue(match.display_name);
-      this.locationService.saveUserLocation(Number(match.lat), Number(match.lon), match.display_name);
+      this.locationService.saveUserLocation(
+        Number(match.lat),
+        Number(match.lon),
+        match.display_name,
+      );
       this.statusMessage.set(`Showing: ${match.display_name}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unmöglich die Adresse zu laden!';
