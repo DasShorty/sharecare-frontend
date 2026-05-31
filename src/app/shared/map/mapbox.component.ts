@@ -2,8 +2,9 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MapComponent } from '@shared/map/map.component';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import type { LatLngExpression } from 'leaflet';
-import { MapMarker, NominatimSearchResult } from '@shared/map/map.model';
+import { MapMarker } from '@shared/map/map.model';
 import { ProblemStateService } from '@features/problem/problem-state.service';
+import { LocationService } from '@features/location/location.service';
 import { LucideMapPinHouse, LucideSearch } from '@lucide/angular';
 
 @Component({
@@ -132,6 +133,7 @@ export class MapboxComponent {
   private readonly fallbackCenter: LatLngExpression = [51.0504, 13.7373];
   private readonly locationZoom = 15;
   private readonly problemStateService = inject(ProblemStateService);
+  private readonly locationService = inject(LocationService);
 
   readonly center = signal<LatLngExpression>(this.fallbackCenter);
   readonly zoom = signal(this.locationZoom);
@@ -158,6 +160,17 @@ export class MapboxComponent {
     return [userMarker, ...problemMarkers];
   });
 
+  constructor() {
+    const saved = this.locationService.loadSavedLocation();
+    if (saved) {
+      this.center.set([Number(saved.lat), Number(saved.lon)]);
+      this.zoom.set(this.locationZoom);
+      const label = saved.display_name ?? `${saved.lat}, ${saved.lon}`;
+      this.markerLabel.set(label);
+      this.addressControl.setValue(label);
+    }
+  }
+
   async autoDetectLocation(): Promise<void> {
     if (!('geolocation' in navigator)) {
       this.statusMessage.set(
@@ -170,10 +183,22 @@ export class MapboxComponent {
     this.statusMessage.set('Erkenne deinen Standort...');
 
     try {
-      const coords = await this.resolveCurrentLocation();
+      const coords = await this.locationService.getCurrentLocation();
       this.center.set([coords.latitude, coords.longitude]);
       this.zoom.set(this.locationZoom);
-      this.markerLabel.set('Dein aktueller Standort');
+
+      try {
+        const rev = await this.locationService.reverseGeocode(coords.latitude, coords.longitude);
+        this.markerLabel.set(rev.display_name ?? 'Dein aktueller Standort');
+        this.addressControl.setValue(rev.display_name ?? `${coords.latitude}, ${coords.longitude}`);
+        this.locationService.saveUserLocation(coords.latitude, coords.longitude, rev.display_name ?? null);
+      } catch {
+        this.markerLabel.set('Dein aktueller Standort');
+        const coordStr = `${coords.latitude}, ${coords.longitude}`;
+        this.addressControl.setValue(coordStr);
+        this.locationService.saveUserLocation(coords.latitude, coords.longitude, coordStr);
+      }
+
       this.statusMessage.set('Deinen aktuellen Standort gefunden!');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Dein Standort ist unbekannt!';
@@ -195,10 +220,13 @@ export class MapboxComponent {
     this.statusMessage.set('Suche deine Adresse auf der Karte...');
 
     try {
-      const match = await this.resolveAddress(address);
+      const match = await this.locationService.geocodeAddress(address);
       this.center.set([Number(match.lat), Number(match.lon)]);
       this.zoom.set(this.locationZoom);
       this.markerLabel.set(match.display_name);
+      // Ensure the manual search input reflects the canonical display name
+      this.addressControl.setValue(match.display_name);
+      this.locationService.saveUserLocation(Number(match.lat), Number(match.lon), match.display_name);
       this.statusMessage.set(`Showing: ${match.display_name}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unmöglich die Adresse zu laden!';
@@ -208,61 +236,5 @@ export class MapboxComponent {
     }
   }
 
-  private resolveCurrentLocation(): Promise<GeolocationCoordinates> {
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve(coords),
-        (error: GeolocationPositionError) => {
-          reject(
-            new Error(`Unmöglich deinen Standort zu lesen! (${error.code}): ${error.message}`),
-          );
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        },
-      );
-    });
-  }
-
-  private async resolveAddress(address: string): Promise<NominatimSearchResult> {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(address)}`,
-      {
-        headers: {
-          Accept: 'application/json',
-        },
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error('Adressenaufruf fehlgeschlagen! Bitte versuche es erneut.');
-    }
-
-    const results: unknown = await response.json();
-    if (!Array.isArray(results) || results.length === 0) {
-      throw new Error('Keinen Standort gefunden!');
-    }
-
-    const firstResult = results[0];
-    if (
-      typeof firstResult !== 'object' ||
-      firstResult === null ||
-      !('lat' in firstResult) ||
-      !('lon' in firstResult) ||
-      !('display_name' in firstResult)
-    ) {
-      throw new Error('Adressenabruf hat ungültige Daten zurückgegeben.');
-    }
-
-    const candidate = firstResult as NominatimSearchResult;
-    const latitude = Number(candidate.lat);
-    const longitude = Number(candidate.lon);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      throw new Error('Adressenabruf hat ungültige Koordinaten zurückgegeben!');
-    }
-
-    return candidate;
-  }
+  // Location operations are handled by LocationService
 }

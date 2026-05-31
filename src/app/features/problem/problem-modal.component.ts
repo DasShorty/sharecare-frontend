@@ -15,13 +15,13 @@ import {
   PaymentType,
 } from '@features/payment/payment.model';
 import { Location } from '@features/location/location.model';
+import { LocationService } from '@features/location/location.service';
 import { Select } from 'primeng/select';
 import { Textarea } from 'primeng/textarea';
 import { RadioButton } from 'primeng/radiobutton';
 
 @Component({
   selector: 'problem-modal',
-  standalone: true,
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -106,7 +106,7 @@ import { RadioButton } from 'primeng/radiobutton';
               type="text"
               placeholder="Oder geben Sie die Adresse ein"
               formControlName="manualAddress"
-              (change)="onAddressChange()"
+              (input)="onAddressChange()"
               class="form-input"
             />
           </div>
@@ -122,15 +122,17 @@ import { RadioButton } from 'primeng/radiobutton';
             <div class="radio-item">
               <p-radioButton
                 id="fixed-time"
+                name="timeType"
                 [value]="TimeType.Fixed"
                 formControlName="timeType"
-                (change)="onTimeTypeChange()">
-              </p-radioButton>
+                (change)="onTimeTypeChange()"
+              ></p-radioButton>
               <label for="fixed-time">Feste Zeit</label>
             </div>
             <div class="radio-item">
               <p-radioButton
                 id="range-time"
+                name="timeType"
                 [value]="TimeType.Range"
                 formControlName="timeType"
                 (change)="onTimeTypeChange()"
@@ -182,6 +184,7 @@ import { RadioButton } from 'primeng/radiobutton';
             <div class="radio-item">
               <p-radioButton
                 id="free-payment"
+                name="paymentType"
                 [value]="PaymentType.Free"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
@@ -191,6 +194,7 @@ import { RadioButton } from 'primeng/radiobutton';
             <div class="radio-item">
               <p-radioButton
                 id="money-payment"
+                name="paymentType"
                 [value]="PaymentType.Money"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
@@ -201,6 +205,7 @@ import { RadioButton } from 'primeng/radiobutton';
             <div class="radio-item">
               <p-radioButton
                 id="custom-payment"
+                name="paymentType"
                 [value]="PaymentType.Custom"
                 formControlName="paymentType"
                 (change)="onPaymentTypeChange()"
@@ -255,7 +260,11 @@ import { RadioButton } from 'primeng/radiobutton';
             type="submit"
             pButton
             label="Angebot erstellen"
-            [disabled]="!problemForm.valid || !selectedLocation() || isCreatingProblem()"
+            [disabled]="
+              !problemForm.valid ||
+              (!selectedLocation() && !problemForm.get('manualAddress')?.value?.trim()) ||
+              isCreatingProblem()
+            "
             class="submit-button"
           ></button>
         </div>
@@ -360,6 +369,7 @@ import { RadioButton } from 'primeng/radiobutton';
 })
 export class ProblemModalComponent {
   private readonly problemStateService = inject(ProblemStateService);
+  private readonly locationService = inject(LocationService);
   isOpen = signal(false);
   readonly isCreatingProblem = signal(false);
   readonly isDetectingLocation = signal(false);
@@ -379,14 +389,14 @@ export class ProblemModalComponent {
       name: new FormControl<string | null>(null, Validators.required),
       description: new FormControl<string | null>(null, Validators.required),
       type: new FormControl<ProblemType | null>(null, Validators.required),
-      timeType: new FormControl<TimeType | null>(null, Validators.required),
-      fixedTime: new FormControl<Date | null>(null, Validators.required),
-      startTime: new FormControl<Date | null>(null, Validators.required),
-      endTime: new FormControl<Date | null>(null, Validators.required),
+      timeType: new FormControl<TimeType | null>(null),
+      fixedTime: new FormControl<Date | null>(null),
+      startTime: new FormControl<Date | null>(null),
+      endTime: new FormControl<Date | null>(null),
       paymentType: new FormControl<PaymentType | null>(null, Validators.required),
-      moneyAmount: new FormControl<number | null>(0, Validators.required),
-      customPaymentText: new FormControl<string | null>(null, Validators.required),
-      manualAddress: new FormControl<string | null>(null, Validators.required),
+      moneyAmount: new FormControl<number | null>(0),
+      customPaymentText: new FormControl<string | null>(null),
+      manualAddress: new FormControl<string | null>(null),
     });
   }
 
@@ -411,15 +421,28 @@ export class ProblemModalComponent {
     this.isDetectingLocation.set(true);
 
     try {
-      const coords = await this.getCurrentLocation();
-      const location: Location = {
-        id: Date.now(),
-        name: 'Aktueller Ort',
-        address: `${coords.latitude}, ${coords.longitude}`,
-        corLat: coords.latitude.toString(),
-        corLon: coords.longitude.toString(),
-      };
-      this.selectedLocation.set(location);
+      const coords = await this.locationService.getCurrentLocation();
+      // Try to reverse-geocode to a readable address
+      try {
+        const rev = await this.locationService.reverseGeocode(coords.latitude, coords.longitude);
+        const location: Location = {
+          id: Date.now(),
+          name: rev.display_name,
+          address: rev.display_name,
+          corLat: String(coords.latitude),
+          corLon: String(coords.longitude),
+        };
+        this.selectedLocation.set(location);
+      } catch {
+        const location: Location = {
+          id: Date.now(),
+          name: 'Aktueller Ort',
+          address: `${coords.latitude}, ${coords.longitude}`,
+          corLat: coords.latitude.toString(),
+          corLon: coords.longitude.toString(),
+        };
+        this.selectedLocation.set(location);
+      }
     } catch (error) {
       console.error('Failed to detect location:', error);
     } finally {
@@ -428,17 +451,7 @@ export class ProblemModalComponent {
   }
 
   onAddressChange(): void {
-    const address = this.problemForm.get('manualAddress')?.value?.trim();
-    if (address) {
-      const location: Location = {
-        id: Date.now(),
-        name: address,
-        address: address,
-        corLat: '0',
-        corLon: '0',
-      };
-      this.selectedLocation.set(location);
-    }
+    this.selectedLocation.set(null);
   }
 
   onTimeTypeChange(): void {
@@ -457,7 +470,7 @@ export class ProblemModalComponent {
   }
 
   async onSubmit(): Promise<void> {
-    if (!this.problemForm.valid || !this.selectedLocation()) {
+    if (!this.problemForm.valid) {
       return;
     }
 
@@ -465,7 +478,29 @@ export class ProblemModalComponent {
 
     try {
       const formValue = this.problemForm.getRawValue();
-      const location = this.selectedLocation()!;
+      let location = this.selectedLocation();
+
+      if (!location) {
+        const manualAddress = formValue.manualAddress?.trim();
+        if (!manualAddress) {
+          return;
+        }
+
+        try {
+          const match = await this.locationService.geocodeAddress(manualAddress);
+          location = {
+            id: Date.now(),
+            name: match.display_name,
+            address: match.display_name,
+            corLat: match.lat,
+            corLon: match.lon,
+          };
+          this.selectedLocation.set(location);
+        } catch (error) {
+          console.error('Failed to resolve manual address:', error);
+          return;
+        }
+      }
 
       // Create time object
       let timeObj;
@@ -538,19 +573,5 @@ export class ProblemModalComponent {
     this.selectedLocation.set(null);
   }
 
-  private getCurrentLocation(): Promise<GeolocationCoordinates> {
-    return new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => resolve(coords),
-        (error: GeolocationPositionError) => {
-          reject(new Error(`Failed to read location (${error.code}): ${error.message}`));
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        },
-      );
-    });
-  }
+  // Geocoding and geolocation delegated to LocationService
 }
